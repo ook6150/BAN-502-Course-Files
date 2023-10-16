@@ -1,0 +1,102 @@
+# Yemi Komolafe
+## Module 2 Assgn 1
+### Simple Linear Regression and Correlation
+
+# Needed Libraries
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(GGally)
+library(lmtest)
+```
+
+
+# create dataset from default R dataset "airquality"
+```{r}
+air = airquality
+
+```
+
+Examine data = air
+```{r}
+str(air)
+summary(air)
+
+```
+# Visualize
+```{r}
+ggpairs(air)
+```
+
+# Drop missing values (NAs)
+```{r}
+air2 = air %>% drop_na()
+
+```
+
+# Use the “ggpairs” function to develop a visualization of the relationships in this dataset and to show correlation
+# values for the combinations of variables
+```{r}
+ggpairs(air2)
+```
+
+# Then use the “ggcorr” function to develop a correlation matrix for the variables. Hint: Use “label = TRUE”
+# in the “ggcorr” function to show the correlation values.
+```{r}
+ggcorr(air2, label = TRUE)
+```
+# Question 9 Plot “Temp” (x axis) versus “Ozone” (y axis) using the “ggplot” function. Choose an appropriate
+# chart type. Which statement best describes the relationship between “Temp” and “Ozone”? Ans As Temp increase, Ozone 
+# increases
+```{r}
+ggplot(air2,aes(x=Temp,y=Ozone)) + geom_point(alpha=0.5) + theme_bw()
+```
+# Use Tidymodels to create a linear regression model using “Temp” to predict “Ozone”. You miss wish to call
+# your model fit “lm_fit”
+```{r}
+air3 = recipe(Temp ~ Ozone, air2) 
+    
+
+lm_model2 = #give the model type a name 
+  linear_reg() %>% #specify that we are doing linear regression
+  set_engine("lm") #specify the specify type of linear tool we want to use 
+
+lm_wflow2 = 
+  workflow() %>% 
+  add_model(lm_model2) %>% 
+  add_recipe(air3)
+
+lm_fit2 = fit(lm_wflow2, air2)
+
+```
+
+
+# 10 What is the slope of this regression = 0.20006 (to four decimal place = 0.2001)
+```{r}
+summary(lm_fit2$fit$fit$fit)
+```
+# Question 13 Use the code below to generate 95% confidence intervals for the coefficients. Note that you
+# may need to change “lm_fit” to the name of your model fit if you used a different name.
+# True/False: A 95% confidence interval for the slope coefficient does not contain zero.
+# confint(lm_fit$fit$fit$fit)
+```{r}
+confint(lm_fit2$fit$fit$fit)
+```
+# Question 14: Using your linear regression model with “Temp” to predict “Ozone”, what is the predicted
+# “Ozone” value when “Temp” is equal to 80 (to two decimal places)?
+
+# How do we make predictions when we have a transformed variable in our model? Use the predict function as usual
+```{r}
+#Manually
+60.2683  + 2.9128*80
+60.2683  + 2.9128*100
+ 
+#Using predict function
+#testdata = data.frame(Temp = c(80,100))
+#predict(lm_fit, new_data = testdata)
+```
+# Question 15 Perform appropriate model diagnostics to verify whether or not the model appears to meet the
+# four linear regression model assumptions.
+# True/False: There is no evidence of non-independent (autocorrelated) residuals
+
+      

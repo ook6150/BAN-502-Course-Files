@@ -1,0 +1,409 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+# PROJECT 1
+
+# Install Libraries
+```{r}
+library(tidyr)
+library(tidyverse)
+library(GGally) #create ggcorr and ggpairs plots
+library(ggcorrplot) #create an alternative to ggcorr plots
+library(dplyr)
+library(ggplot2)
+library(ggforce)
+library(patchwork)
+library(gridExtra) #used for a little fancy arranging of plots
+library(car) #for the VIF function
+library(glmnet)
+library(skimr)
+library(tidymodels)
+library(mice) #package for imputation
+library(VIM) #visualizing missingness
+library(ranger) #for random forests
+library(randomForest) #also for random forests
+library(vip) #variable importance
+```
+
+# Read in Data
+```{r}
+train = read_csv("train.csv")
+ 
+```
+
+#
+```{r}
+str(train)
+summary(train)
+```
+
+#CHECK for MIssing Data
+```{r}
+skim(train)
+```
+# Delete product_code column. Use Row wise deletion
+```{r}
+train = train %>% drop_na()
+```
+
+# Check 
+```{r}
+skim(train)
+```
+
+
+# Delete product_code column. Use Row wise deletion
+```{r}
+#train = train %>% select(-product_code)
+```
+
+#Convert all character variables to factors  
+```{r}
+train = train %>% mutate_if(is.character,as_factor)
+```
+
+
+
+#
+```{r}
+str(train)
+summary(train)
+```
+
+
+#
+```{r}
+train = train %>% mutate(failure  = as_factor(failure ))  %>%
+    mutate(failure = fct_recode(failure, "No" = "0", "Yes" = "1" )) %>%
+   mutate(product_code  = as_factor(product_code )) %>% 
+  mutate(attribute_0  = as_factor(attribute_0 )) %>%
+  mutate(attribute_1  = as_factor(attribute_1 )) 
+str(train)
+summary(train)
+ 
+```
+
+```{r}
+train2 = train %>% dplyr::select( "failure", "attribute_0", "attribute_1", "attribute_2", "attribute_3", "measurement_0", "measurement_1", "measurement_2", "measurement_3", "measurement_4", "measurement_5", "measurement_6", "measurement_7", "measurement_8", "measurement_9", "measurement_10", "measurement_11", "measurement_12", "measurement_13", "measurement_14", "measurement_15", "measurement_16", "measurement_17")
+str(train2)
+summary(train2)
+```
+
+##### ABOVE - GOOD TO GO 
+
+# Pivoting Longer: Turning variable into rows
+```{r}
+longer_train <- train %>% 
+  pivot_longer(measurement_0:measurement_17, names_to = "measurement", values_to = "result")  
+ print(longer_train)
+```
+
+# Flipping measurement and result -1
+```{r}
+train %>%
+ pivot_longer(measurement_0:measurement_17, names_to = "measurement", values_to = "result") %>%
+  ggplot(aes(x = result)) + 
+  geom_bar () +
+  facet_wrap (vars(measurement), ncol = 3) +
+  labs(x = "Response (on a 1 to 100 scale)", y = "result")
+```
+#
+```{r}
+
+```
+
+
+
+# Box Plot
+```{r}
+train %>%
+ pivot_longer(measurement_0:measurement_17, names_to = "measurement", values_to = "result") %>%
+ ggplot(aes(y = measurement, x = result)) +
+  geom_boxplot() +
+   labs(x = "result", y = "measurement (on a 1 to 5 scale)")
+```
+
+# Box Plot 2
+```{r}
+train %>%
+ pivot_longer(measurement_0:measurement_17, names_to = "measurement", values_to = "result") %>%
+ ggplot(aes(y = result, x = measurement)) +
+  geom_boxplot() +
+   labs(x = "measurement", y = "result (on a 1 to 5 scale)")
+```
+#
+```{r}
+train = train %>% mutate(failure  = as_factor(failure ))  %>%
+  mutate(failure = fct_recode(failure, "No" = "0", "Yes" = "1" ))  
+str(train)
+summary(train)
+```
+
+
+
+
+#Visualization  - Factor variable using BAR CHART
+```{r}
+ggplot(longer_train, aes(x = failure, fill = failure)) + geom_bar() 
+```
+#
+```{r}
+table(train$failure)
+```
+
+
+
+#
+```{r}
+ggplot(longer_train, aes(x = measurement, fill = result )) + geom_bar()
+```
+
+
+```{r}
+p1 = ggplot(longer_train, aes(x = attribute_0, fill = failure)) + geom_bar(position = "fill")
+p2 = ggplot(longer_train, aes(x = attribute_1, fill = failure)) + geom_bar(position = "fill")
+p3 = ggplot(longer_train, aes(x = attribute_2, fill = failure)) + geom_bar(position = "fill")
+p4 = ggplot(longer_train, aes(x = attribute_3, fill = failure)) + geom_bar(position = "fill")
+grid.arrange(p1,p2,p3,p4)
+```
+
+
+#
+```{r}
+ggplot(longer_train, aes(x = failure, fill = measurement)) + geom_bar(position = "fill")
+```
+#
+```{r}
+p1 = ggplot(longer_train, aes(x = attribute_0, fill = measurement)) + geom_bar(position = "fill")
+p2 = ggplot(longer_train, aes(x = attribute_1, fill = measurement)) + geom_bar(position = "fill")
+p3 = ggplot(longer_train, aes(x = attribute_2, fill = measurement)) + geom_bar(position = "fill")
+p4 = ggplot(longer_train, aes(x = attribute_3, fill = measurement)) + geom_bar(position = "fill")
+grid.arrange(p1,p2,p3,p4)
+```
+
+
+
+# Trial
+```{r}
+p1 = ggplot(train, aes(x = measurement_0, fill = failure)) + geom_bar(position = "fill")
+p2 = ggplot(train, aes(x = measurement_1, fill = failure)) + geom_bar(position = "fill")
+p3 = ggplot(train, aes(x = measurement_2, fill = failure)) + geom_bar(position = "fill")
+p4 = ggplot(train, aes(x = measurement_3, fill = failure)) + geom_bar(position = "fill")
+grid.arrange(p1,p2,p3,p4)
+
+```
+#
+```{r}
+p1 = ggplot(train, aes(x = measurement_4, fill = failure)) + geom_bar(position = "fill")
+p2 = ggplot(train, aes(x = measurement_5, fill = failure)) + geom_bar(position = "fill")
+p3 = ggplot(train, aes(x = measurement_6, fill = failure)) + geom_bar(position = "fill")
+p4 = ggplot(train, aes(x = measurement_7, fill = failure)) + geom_bar(position = "fill")
+grid.arrange(p1,p2,p3,p4)
+```
+
+#
+```{r}
+p1 = ggplot(train, aes(x = measurement_8, fill = failure)) + geom_bar(position = "fill")
+p2 = ggplot(train, aes(x = measurement_9, fill = failure)) + geom_bar(position = "fill")
+p3 = ggplot(train, aes(x = measurement_10, fill = failure)) + geom_bar(position = "fill")
+p4 = ggplot(train, aes(x = measurement_11, fill = failure)) + geom_bar(position = "fill")
+grid.arrange(p1,p2,p3,p4)
+```
+
+#
+```{r}
+p1 = ggplot(train, aes(x = measurement_12, fill = failure)) + geom_bar(position = "fill")
+p2 = ggplot(train, aes(x = measurement_13, fill = failure)) + geom_bar(position = "fill")
+p3 = ggplot(train, aes(x = measurement_14, fill = failure)) + geom_bar(position = "fill")
+p4 = ggplot(train, aes(x = measurement_15, fill = failure)) + geom_bar(position = "fill")
+grid.arrange(p1,p2,p3,p4)
+```
+
+#
+```{r}
+p1 = ggplot(train, aes(x = measurement_16, fill = failure)) + geom_bar(position = "fill")
+p2 = ggplot(train, aes(x = measurement_17, fill = failure)) + geom_bar(position = "fill")
+grid.arrange(p1,p2)
+```
+
+
+
+
+
+#ggcorr
+```{r}
+#use "ggcorr" to create a correlation matrix with labels and correlation reported to two decimals
+ggcorr(train2, label = "TRUE", label_round = 2) 
+
+#Alternative using the "ggcorrplot" function
+corr = round(cor(train2[,1:11]), 2) #Note the ,1:11 code to select the columns for inclusion
+ggcorrplot(corr, hc.order = TRUE, type = "lower",
+   lab = TRUE)
+```
+
+
+#
+```{r}
+ggplot(data = train) + geom_bar(mapping = aes(x = failure))  
+```
+
+
+
+# Visual Points
+```{r}
+p1 = ggplot(train2, aes(x=failure, y=measurement_0  )) + geom_point() + geom_smooth(method = lm, se = FALSE) + theme_bw()
+p2 = ggplot(train2, aes(x=failure, y=measurement_1  )) + geom_point() + geom_smooth(method = lm, se = FALSE) + theme_bw()
+p3 = ggplot(train2, aes(x=failure, y=measurement_16  )) + geom_point() + geom_smooth(method = lm, se = FALSE) + theme_bw()
+p4 = ggplot(train2, aes(x=failure, y=measurement_17  )) + geom_point() + geom_smooth(method = lm, se = FALSE) + theme_bw()
+grid.arrange(p1,p2,p3,p4)
+```
+#
+```{r}
+p1 = ggplot(train2,aes(x=failure,y=measurement_0)) + geom_boxplot() + geom_jitter(alpha = 0.01) + theme_bw() + 
+  theme(axis.text.x = element_text(angle = 90))
+p2 = ggplot(train2,aes(x=failure,y=measurement_1)) + geom_boxplot() + geom_jitter(alpha = 0.01) + theme_bw() + 
+  theme(axis.text.x = element_text(angle = 90))
+p3 = ggplot(train2,aes(x=failure,y=measurement_16)) + geom_boxplot() + geom_jitter(alpha = 0.01) + theme_bw() + 
+  theme(axis.text.x = element_text(angle = 90))
+p4 = ggplot(train2,aes(x=failure,y=measurement_17)) + geom_boxplot() + geom_jitter(alpha = 0.01) + theme_bw() + 
+  theme(axis.text.x = element_text(angle = 90))
+grid.arrange(p1,p2,p3,p4)
+```
+
+
+
+
+#
+```{r}
+train2 %>% count(failure)
+```
+#
+```{r}
+head(train2)
+```
+
+#Cal Mean
+```{r}
+mean(train2$measurement_0)
+mean(train2$measurement_1)
+mean(train2$measurement_2)
+mean(train2$measurement_3)
+mean(train2$measurement_15)
+mean(train2$measurement_16)
+mean(train2$measurement_17)
+```
+
+#Cal Std Deviation
+```{r}
+sd(train2$measurement_0)
+sd(train2$measurement_1)
+sd(train2$measurement_2)
+sd(train2$measurement_3)
+sd(train2$measurement_15)
+sd(train2$measurement_16)
+sd(train2$measurement_17)
+```
+
+#
+```{r}
+aggregate(train2$measurement_0, by = list(failure = train2$failure),mean)
+aggregate(train2$measurement_1, by = list(failure = train2$failure),mean)
+aggregate(train2$measurement_2, by = list(failure = train2$failure),mean)
+aggregate(train2$measurement_3, by = list(failure = train2$failure),mean)
+aggregate(train2$measurement_15, by = list(failure = train2$failure),mean)
+aggregate(train2$measurement_16, by = list(failure = train2$failure),mean)
+aggregate(train2$measurement_17, by = list(failure = train2$failure),mean)
+```
+
+
+
+# overlapping lines
+```{r}
+p1 = ggplot(data = train, mapping = aes(x = measurement_0, colour = failure)) +
+  geom_freqpoly(binwidth = 0.1)
+p2 = ggplot(data = train, mapping = aes(x = measurement_1, colour = failure)) +
+  geom_freqpoly(binwidth = 0.1)
+p3 = ggplot(data = train, mapping = aes(x = measurement_2, colour = failure)) +
+  geom_freqpoly(binwidth = 0.1)
+p4 = ggplot(data = train, mapping = aes(x = measurement_3, colour = failure)) +
+  geom_freqpoly(binwidth = 0.1)
+grid.arrange(p1,p2,p3,p4)
+```
+
+#
+```{r}
+p1 = ggplot(data = train, mapping = aes(x = measurement_4, colour = failure)) +
+  geom_freqpoly(binwidth = 0.1)
+p2 = ggplot(data = train, mapping = aes(x = measurement_5, colour = failure)) +
+  geom_freqpoly(binwidth = 0.1)
+p3 = ggplot(data = train, mapping = aes(x = measurement_6, colour = failure)) +
+  geom_freqpoly(binwidth = 0.1)
+p4 = ggplot(data = train, mapping = aes(x = measurement_7, colour = failure)) +
+  geom_freqpoly(binwidth = 0.1)
+grid.arrange(p1,p2,p3,p4)
+```
+
+#
+```{r}
+p1 = ggplot(data = train, mapping = aes(x = measurement_8, colour = failure)) +
+  geom_freqpoly(binwidth = 0.1)
+p2 = ggplot(data = train, mapping = aes(x = measurement_9, colour = failure)) +
+  geom_freqpoly(binwidth = 0.1)
+p3 = ggplot(data = train, mapping = aes(x = measurement_10, colour = failure)) +
+  geom_freqpoly(binwidth = 0.1)
+p4 = ggplot(data = train, mapping = aes(x = measurement_11, colour = failure)) +
+  geom_freqpoly(binwidth = 0.1)
+grid.arrange(p1,p2,p3,p4)
+```
+
+#
+```{r}
+p1 = ggplot(data = train, mapping = aes(x = measurement_12, colour = failure)) +
+  geom_freqpoly(binwidth = 0.1)
+p2 = ggplot(data = train, mapping = aes(x = measurement_13, colour = failure)) +
+  geom_freqpoly(binwidth = 0.1)
+p3 = ggplot(data = train, mapping = aes(x = measurement_14, colour = failure)) +
+  geom_freqpoly(binwidth = 0.1)
+p4 = ggplot(data = train, mapping = aes(x = measurement_15, colour = failure)) +
+  geom_freqpoly(binwidth = 0.1)
+p5 = ggplot(data = train, mapping = aes(x = measurement_16, colour = failure)) +
+  geom_freqpoly(binwidth = 0.1)
+p6 = ggplot(data = train, mapping = aes(x = measurement_17, colour = failure)) +
+  geom_freqpoly(binwidth = 0.1)
+grid.arrange(p1,p2,p3,p4,p5,p6)
+```
+#Shorten variable names "measurement)
+```{r}
+train <- train %>% rename ("m0" = "measurement_0" , "m1" = "measurement_1" , "m2" = "measurement_2" , "m3" = "measurement_3" , 
+                          "m4" = "measurement_4" , "m5" = "measurement_5" , "m6" = "measurement_6", "m7" = "measurement_7" , 
+                         "m8" = "measurement_8" ,"m9" = "measurement_9",  "m10" = "measurement_10", "m11" = "measurement_11" ,
+                          "m12" = "measurement_12" , "m13" = "measurement_13" , "m14" = "measurement_14" ,
+                           "m15" = "measurement_15"  , "m16" = "measurement_16" , "m17" = "measurement_17")
+print(train)
+```
+
+#
+```{r}
+train %>%
+ pivot_longer(m0:m17, names_to = "measurement", values_to = "result") %>%
+ ggplot(aes(y = result, x = measurement)) +
+  geom_boxplot() +
+   labs(x = "measurement", y = "result (on a 1 to 5 scale)")
+
+```
+
+ 
+
+
+
+
+
+
+
+
+
+
+
+

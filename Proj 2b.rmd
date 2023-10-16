@@ -1,0 +1,682 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+# Yemi Komolafe
+# PROJECT Phase 2
+
+# Libraries
+```{r}
+library(tidyr)
+library(tidyverse)
+library(GGally) #create ggcorr and ggpairs plots
+library(ggcorrplot) #create an alternative to ggcorr plots
+library(dplyr)
+library(ggplot2)
+library(ggforce)
+library(patchwork)
+library(gridExtra) #used for a little fancy arranging of plots
+library(car) #for the VIF function
+library(glmnet)
+library(skimr)
+library(tidymodels)
+library(mice) #package for imputation
+library(VIM) #visualizing missingness
+library(ranger) #for random forests
+library(randomForest) #also for random forests
+library(vip) #variable importance
+library(caret)
+library(xgboost)
+library(nnet)
+```
+
+# Import dataset
+```{r}
+ames = read_csv("ames_student.csv")
+```
+# Initial dataset str before removeing variables "Logitude" and "Latitude"
+```{r}
+#str(ames)
+#summary(ames)
+```
+
+# Remove "Longitude" and "Latitude" from the ames dataset
+```{r}
+ames <- subset(ames, select = -c(Longitude , Latitude ))
+```
+
+#
+```{r}
+#str(ames)
+#summary(ames)
+```
+#Due to the size of the ames dataset, I have picked the important variables and built in a dataset called ames
+```{r}
+#ames = ames %>% dplyr::select("SalePrice", "OverallQual", "GrLivArea", "GarageCars", "GarageArea", "TotalBsmtSF", "1stFlrSF", "FullBath", "YearBuilt", "YearRemodAdd", "TotRmsAbvGrd", "Neighborhood")
+```
+
+
+
+# Missingness by variable and combinations of missingness using "aggr" from VIM package. 
+```{r}
+#vim_plot = aggr(ames, numbers = TRUE, prop = c(TRUE, FALSE),cex.axis=.7)
+#the cex.axis reduces size of text on x-axis so labels fit better
+```
+#Check again
+```{r}
+#skim(ames)
+```
+# as factor
+```{r}
+#ames = ames %>% mutate(Above_Median = as_factor(Above_Median)) 
+  
+  
+```
+
+# Convert all Character variables to factors
+```{r}
+ames = ames %>% mutate_if(is.character, as_factor)
+```
+
+#
+```{r}
+ames = ames %>% mutate(Neighborhood = as_factor(Neighborhood))
+```
+
+
+#
+```{r}
+#str(ames)
+#summary(ames)
+#glimpse(ames)
+```
+
+##Due to the size of the ames dataset, I have picked the important variables and built in a dataset called ames
+```{r}
+ames = ames %>% dplyr::select("Neighborhood" , "Above_Median", "Gr_Liv_Area" , "First_Flr_SF", "Bldg_Type" , "Sale_Type" , "Total_Bsmt_SF" ,"Year_Built" , "Garage_Cars" , "TotRms_AbvGrd")
+```
+
+# Str
+```{r}
+#str(ames)
+#summary(ames)
+#glimpse(ames)
+```
+
+
+#
+```{r}
+set.seed(123) 
+ames_split = initial_split(ames, prop = 0.7, strata = Above_Median) #70% in training
+train = training(ames_split) 
+test = testing(ames_split)
+```
+
+
+# Build CLASSIFICATION TREE
+```{r}
+ames_recipe = recipe(Above_Median  ~., train)
+
+tree_model = decision_tree() %>% 
+  set_engine("rpart", model = TRUE) %>% #don't forget the model = TRUE flag
+  set_mode("classification")
+
+ames_wflow = 
+  workflow() %>% 
+  add_model(tree_model) %>% 
+  add_recipe(ames_recipe)
+
+ames_fit = fit(ames_wflow, train)
+```
+
+
+#Visualize Tree
+```{r}
+#extract the tree's fit from the fit object
+tree = ames_fit %>% 
+  pull_workflow_fit() %>% 
+  pluck("fit")
+
+#plot the tree
+#fancyRpartPlot(tree)
+```
+
+
+
+#Enlarge Tree
+```{r}
+#fancyRpartPlot(tree, tweak=1.2)
+```
+
+
+#Look at the "rpart" complexity parameter "cp". 
+```{r}
+ames_fit$fit$fit$fit$cptable
+```
+
+
+# Create Folds
+```{r}
+set.seed(234)
+folds = vfold_cv(train, v = 5)
+```
+
+
+
+
+
+
+#TRIAL 
+```{r}
+ames_recipe = recipe(Above_Median ~., train) %>%
+  step_dummy(all_nominal(),-all_outcomes())
+
+tree_model = decision_tree(cost_complexity = tune()) %>% 
+  set_engine("rpart", model = TRUE) %>% #don't forget the model = TRUE flag
+  set_mode("classification")
+
+tree_grid = grid_regular(cost_complexity(),
+                          levels = 25) #try 25 sensible values for cp
+
+ames_wflow = 
+  workflow() %>% 
+  add_model(tree_model) %>% 
+  add_recipe(ames_recipe)
+
+tree_res = 
+  ames_wflow %>% 
+  tune_grid(
+    resamples = folds,
+    grid = tree_grid
+    )
+
+tree_res
+```
+#
+```{r}
+tree_res %>%
+  collect_metrics() %>%
+  ggplot(aes(cost_complexity, mean)) +
+  geom_line(size = 1.5, alpha = 0.6) +
+  geom_point(size = 2) +
+  facet_wrap(~ .metric, scales = "free", nrow = 2) 
+```
+
+
+#
+```{r}
+best_tree = tree_res %>%
+  select_best("accuracy")
+
+best_tree
+```
+
+#
+
+```{r}
+final_wf = 
+  ames_wflow %>% 
+  finalize_workflow(best_tree)
+```
+
+#
+```{r}
+final_fit = fit(final_wf, train)
+
+tree = final_fit %>% 
+  pull_workflow_fit() %>% 
+  pluck("fit")
+
+#fancyRpartPlot(tree, tweak = 1.5) 
+```
+#Englarge tree
+```{r}
+#fancyRpartPlot(tree, tweak=2.4)
+
+```
+
+
+
+
+#Look at performance of this simple tree.
+#Predicttion on Training set
+```{r}
+treepred = predict(final_fit, train, type = "class")
+head(treepred)
+```
+#Caret confusion matrix and accuracy, etc. calcs  
+```{r}
+confusionMatrix(treepred$.pred_class,train$Above_Median,positive="Yes") #predictions first then actual
+```
+
+# Prediction on testing set
+```{r}
+treepred_test = predict(final_fit, test, type = "class")
+head(treepred_test)
+```
+
+#Confusion matrix
+```{r}
+confusionMatrix(treepred_test$.pred_class,test$Above_Median,positive="Yes")
+```
+
+
+
+
+
+## Commence LOG REG
+
+# Build Regression Model with Year_Built 
+```{r}
+ames_model = 
+  logistic_reg() %>% #note the use of logistic_reg
+  set_engine("glm") #standard logistic regression engine is glm
+
+ames_recipe = recipe(Above_Median ~ Year_Built , ames) %>%
+  step_dummy(all_nominal(), -all_outcomes()) #exclude the response variable from being dummy converted  
+
+logreg_wf = workflow() %>%
+  add_recipe(ames_recipe) %>% 
+  add_model(ames_model)
+
+ames_fit = fit(logreg_wf, ames)
+
+```
+
+#
+```{r}
+summary(ames_fit$fit$fit$fit)
+```
+
+
+
+# Build Regression Model with Gr_Liv_Area
+```{r}
+ames_model = 
+  logistic_reg() %>% #note the use of logistic_reg
+  set_engine("glm") #standard logistic regression engine is glm
+
+ames_recipe = recipe(Above_Median ~ Gr_Liv_Area , ames) %>%
+  step_dummy(all_nominal(), -all_outcomes()) #exclude the response variable from being dummy converted  
+
+logreg_wf = workflow() %>%
+  add_recipe(ames_recipe) %>% 
+  add_model(ames_model)
+
+ames_fit2 = fit(logreg_wf, ames)
+```
+
+
+#
+```{r}
+summary(ames_fit2$fit$fit$fit)
+```
+
+
+
+# Build Regression Model with First_Flr_SF
+```{r}
+ames_model = 
+  logistic_reg() %>% #note the use of logistic_reg
+  set_engine("glm") #standard logistic regression engine is glm
+
+ames_recipe = recipe(Above_Median ~ First_Flr_SF , ames) %>%
+  step_dummy(all_nominal(), -all_outcomes()) #exclude the response variable from being dummy converted  
+
+logreg_wf = workflow() %>%
+  add_recipe(ames_recipe) %>% 
+  add_model(ames_model)
+
+ames_fit3 = fit(logreg_wf, ames)
+```
+
+#
+```{r}
+summary(ames_fit3$fit$fit$fit)
+```
+
+# Build Regression Model with Neighborhood 
+```{r}
+ames_model = 
+  logistic_reg() %>% #note the use of logistic_reg
+  set_engine("glm") #standard logistic regression engine is glm
+
+ames_recipe = recipe(Above_Median ~ Neighborhood  , ames) %>%
+  step_dummy(all_nominal(), -all_outcomes()) #exclude the response variable from being dummy converted  
+
+logreg_wf = workflow() %>%
+  add_recipe(ames_recipe) %>% 
+  add_model(ames_model)
+
+ames_fit4 = fit(logreg_wf, ames)
+```
+
+#
+```{r}
+summary(ames_fit4$fit$fit$fit)
+```
+
+
+
+# Build Regression Model with Year_Built + Gr_Liv_Area + First_Flr_SF + Neighborhood 
+```{r}
+ames_model = 
+  logistic_reg() %>% #note the use of logistic_reg
+  set_engine("glm") #standard logistic regression engine is glm
+
+ames_recipe = recipe(Above_Median ~ Year_Built + Gr_Liv_Area + First_Flr_SF + Neighborhood   , ames) %>%
+  step_dummy(all_nominal(), -all_outcomes()) #exclude the response variable from being dummy converted  
+
+logreg_wf = workflow() %>%
+  add_recipe(ames_recipe) %>% 
+  add_model(ames_model)
+
+ames_fit5 = fit(logreg_wf, ames)
+```
+
+#
+```{r}
+summary(ames_fit5$fit$fit$fit)
+```
+
+# Build Regression Model with Year_Built + Gr_Liv_Area
+```{r}
+ames_model = 
+  logistic_reg() %>% #note the use of logistic_reg
+  set_engine("glm") #standard logistic regression engine is glm
+
+ames_recipe = recipe(Above_Median ~ Year_Built + Gr_Liv_Area  , ames) %>%
+  step_dummy(all_nominal(), -all_outcomes()) #exclude the response variable from being dummy converted  
+
+logreg_wf = workflow() %>%
+  add_recipe(ames_recipe) %>% 
+  add_model(ames_model)
+
+ames_fit6 = fit(logreg_wf, ames)
+```
+
+#
+```{r}
+summary(ames_fit6$fit$fit$fit)
+```
+#prediction on Above_Median
+# Build dataset - new_ames
+```{r}
+new_ames = data.frame(Year_Built = 1990, Gr_Liv_Area = 2000 , First_Flr_SF = 1500 , Garage_Cars = 2, Neighborhood = "Landmark" )
+predict(ames_fit5, new_ames, type="prob")
+```
+
+
+
+
+## Build Regression Model with Year_Built + Gr_Liv_Area + First_Flr_SF + Neighborhood + Total_Bsmt_SF + Garage_Cars + TotRms_AbvGrd
+```{r}
+ames_model = 
+  logistic_reg() %>% #note the use of logistic_reg
+  set_engine("glm") #standard logistic regression engine is glm
+
+ames_recipe = recipe(Above_Median ~ Neighborhood + Year_Built + Gr_Liv_Area + First_Flr_SF + Garage_Cars + Total_Bsmt_SF + TotRms_AbvGrd , ames) %>%
+  step_dummy(all_nominal(), -all_outcomes()) #exclude the response variable from being dummy converted  
+
+logreg_wf = workflow() %>%
+  add_recipe(ames_recipe) %>% 
+  add_model(ames_model)
+
+ames_fit7 = fit(logreg_wf, ames)
+```
+
+#
+```{r}
+summary(ames_fit7$fit$fit$fit)
+```
+
+##prediction on Above_Median
+# Build dataset - new_ames
+# When Neighborhood = Landmark
+```{r}
+new_ames2 = data.frame(Neighborhood = "Landmark", Year_Built = 1990, Gr_Liv_Area = 2000 , First_Flr_SF = 1500 , Fireplaces = 2 , Total_Bsmt_SF = 1000 , Garage_Cars = 2 , TotRms_AbvGrd = 5 )
+predict(ames_fit7, new_ames2, type="prob")
+```
+
+
+## When Neighborhood = Crawford
+```{r}
+new_ames2 = data.frame(Neighborhood = "Crawford", Year_Built = 1990, Gr_Liv_Area = 2000 , First_Flr_SF = 1500 , Fireplaces = 2 , Total_Bsmt_SF = 1000 , Garage_Cars = 2 , TotRms_AbvGrd = 5 )
+predict(ames_fit7, new_ames2, type="prob")
+```
+
+
+
+
+# RANDOM FOREST MODEL#
+#####################
+```{r}
+#ames_recipe = recipe(Above_Median ~., train) %>%
+  #step_dummy(all_nominal(), -all_outcomes())
+
+#rf_model = rand_forest() %>% 
+  #set_engine("ranger", importance = "permutation") %>% #added importance metric
+  #set_mode("classification")
+
+#ames_wflow = 
+  #workflow() %>% 
+  #add_model(rf_model) %>% 
+  #add_recipe(ames_recipe)
+
+#set.seed(123)
+#ames_fit = fit(ames_wflow, train)
+
+#set.seed(1234)
+#rf_res <-
+  #tune_grid(ames_workflow, resamples = folds, grid = 25)
+
+
+```
+
+
+#Predictions on Train
+```{r}
+trainpredrf = predict(ames_fit, train)
+head(trainpredrf)
+```
+
+#Confusion Matrix
+```{r}
+confusionMatrix(trainpredrf$.pred_class, train$Above_Median, 
+                positive = "Yes")
+```
+
+#Predictions on Test
+```{r}
+testpredrf = predict(ames_fit, test)
+head(testpredrf)
+```
+
+Confusion Matrix on Test
+```{r}
+confusionMatrix(testpredrf$.pred_class, test$Above_Median, 
+                positive = "Yes")
+```
+#
+```{r}
+ames_fit %>% pull_workflow_fit() %>% vip(geom = "point")
+```
+
+##XGBoost Model
+
+```{r}
+#use_xgboost(Above_Median ~., train)
+```
+#
+```{r}
+set.seed(123)
+folds = vfold_cv(train, v = 5)
+```
+
+
+
+#
+```{r}
+#start_time = Sys.time()
+
+#xgboost_recipe <- 
+#  recipe(formula = Above_Median ~ ., data = train) %>% 
+   #step_novel(all_nominal(), -all_outcomes()) %>% 
+#  step_dummy(all_nominal(), -all_outcomes(), one_hot = TRUE) %>% 
+ # step_zv(all_predictors()) 
+
+#xgboost_spec <- 
+#  boost_tree(trees = tune(), min_n = tune(), tree_depth = tune(), learn_rate = tune(), 
+#    loss_reduction = tune(), sample_size = tune()) %>% 
+#  set_mode("classification") %>% 
+#  set_engine("xgboost") 
+
+#xgboost_workflow <- 
+#  workflow() %>% 
+#  add_recipe(xgboost_recipe) %>% 
+#  add_model(xgboost_spec) 
+
+#set.seed(28601)
+#xgboost_tune <-
+  #tune_grid(xgboost_workflow, resamples = folds, grid = 25)
+
+#set.seed(1234)
+#xgboost_res <-
+#  tune_grid(xgboost_workflow, resamples = folds, grid = 25)
+
+#end_time = Sys.time()
+#end_time - start_time
+```
+#
+```{r}
+#best_xgb = select_best(xgboost_tune, "accuracy")
+
+#final_xgb = finalize_workflow(
+  #xgboost_workflow,
+  #best_xgb)
+
+
+#final_xgb
+```
+
+#Fix workflow into training data
+```{r}
+#final_xgb_fit = fit(final_xgb, train)
+```
+
+#
+```{r}
+#trainpredxgb = predict(final_xgb_fit, train)
+#head(trainpredxgb)
+```
+
+#Confusion Matrix
+```{r}
+#confusionMatrix(trainpredxgb$.pred_class, train$Above_Median, 
+                #positive = "Yes")
+```
+#
+```{r}
+#testpredxgb = predict(final_xgb_fit, test)
+```
+
+#
+```{r}
+#confusionMatrix(testpredxgb$.pred_class, test$Above_Median, 
+                #positive = "Yes")
+```
+
+
+
+## NEURAL MODELS
+```{r}
+start_time = Sys.time() #for timing
+
+#ames_recipe = recipe(Above_Median ~., train) %>%
+#  step_normalize(all_predictors(), -all_nominal()) %>% 
+ # step_dummy(all_nominal(), -all_outcomes())
+
+#ames_model = 
+#  mlp(hidden_units = tune(), penalty = tune(), 
+ #     epochs = tune()) %>%
+#  set_mode("classification") %>% 
+#  set_engine("nnet", verbose = 0) #verbose = 0 reduces output from the model
+  
+#ames_workflow <- 
+#  workflow() %>% 
+#  add_recipe(ames_recipe) %>% 
+#  add_model(ames_model) 
+
+#set.seed(1234)
+# neural_tune <-
+#  tune_grid(ames_workflow, resamples = folds, grid = 25)
+
+#set.seed(1234)
+#neural_res <-
+ # tune_grid(ames_workflow, resamples = folds, grid = 25)
+
+end_time = Sys.time()
+end_time-start_time
+```
+
+#
+```{r}
+#neural_tune %>%
+ # collect_metrics() %>%
+#  filter(.metric == "accuracy") %>%
+  #select(mean, hidden_units, penalty, epochs) %>%
+#  pivot_longer(hidden_units:epochs,
+#    values_to = "value",
+#    names_to = "parameter"
+#  ) %>%
+#  ggplot(aes(value, mean, color = parameter)) +
+#  geom_point(show.legend = FALSE) +
+#  facet_wrap(~parameter, scales = "free_x") +
+#  labs(x = NULL, y = "Accuracy")
+```
+#
+```{r}
+#best_nn = select_best(neural_tune, "accuracy")
+
+#final_nn = finalize_workflow(
+#  ames_workflow,
+#  best_nn)
+
+
+# final_nn
+```
+#
+```{r}
+# final_nn_fit = fit(final_nn, train)
+```
+
+#
+```{r}
+# trainprednn = predict(final_nn_fit, train)
+# head(trainprednn)
+```
+
+#
+```{r}
+# confusionMatrix(trainprednn$.pred_class, train$Above_Median, 
+             #   positive = "Yes")
+```
+#
+```{r}
+# final_nn_fit = fit(final_nn, test)
+```
+
+#
+```{r}
+#testprednn = predict(final_nn_fit, test)
+#head(testprednn)
+```
+
+#
+```{r}
+#confusionMatrix(testprednn$.pred_class, test$Above_Median, 
+              #  positive = "Yes")
+```
+
+
